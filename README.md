@@ -1,10 +1,12 @@
 # Unlock & Root — VITURE Neckband Pro (V1231)
 
-**Unlocking wipes your device.**
+**Unlocking wipes your device. I am also not responsible for any damage or broken
+devices. This guide and its tool are provided as-is, without warranty.**
 
 ## You need
 
-- USB-C cable — the glasses port is the data port, so unplug the glasses
+- **USB-C magnet adapter for the glasses** — the built-in glasses cable is the USB you
+  need to use
 - adb + fastboot
 - Python 3
 
@@ -158,4 +160,5 @@ fastboot flash boot stock_boot_2.1.3.30702.img
 
 [viture-pro-kernel](https://github.com/DigijEth/viture-pro-kernel) — custom kernel with KernelSU-Next
 
-No warranty. This can leave your device unbootable.
+I am not responsible for any damage or broken devices. This guide and its tool are provided
+as-is, without warranty.
