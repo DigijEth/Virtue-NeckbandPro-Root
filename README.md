@@ -35,8 +35,12 @@ binaries, firmware images or APKs are committed — see [`.gitignore`](.gitignor
 
 - **Unlocking is blind.** The bootloader unlock menu is drawn to a display that does not
   come up, so the confirmation has to be done by feel: **Volume Up once, then Power.**
-- **Stock recovery has no display at all** — not a DP alt-mode limitation, it simply has
-  no display driver in its ramdisk.
+- **The glasses are on DisplayPort alt mode over USB-C**, proven by attach/detach: only
+  `card0-DP-1` changes state. `card0-DSI-1` reports `connected` with a plausible mode even
+  with nothing plugged in — it is a phantom from Qualcomm's reference device tree.
+- **Stock recovery is blind, but not for lack of a driver.** `msm_drm.ko` ships in
+  vendor_boot and first-stage init loads it in recovery too. What never happens in recovery
+  is the USB-C PD / alt-mode negotiation that gives the DP controller a link.
 
 ## Ordering of operations
 
