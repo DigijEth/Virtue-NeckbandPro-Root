@@ -2,131 +2,119 @@
 
 Unlock the bootloader and root the VITURE Neckband Pro (`V1231`).
 
-There's a script that does most of it. The hard part on this device is that **you can't see
-the screen** — there's no display in the neckband, and neither the bootloader nor recovery
-puts anything on the glasses. So every prompt has to be handled without looking at it.
-That's what the script is for.
+Everything you need is in this repo — the scripts, the patched boot image, and the stock
+boot image to go back.
 
-> **This wipes your device.** Unlocking the bootloader erases everything. Back up first.
+> **Unlocking wipes your device.** Back up first.
+
+---
+
+## The problem this solves
+
+There is no screen on the neckband. The display is in the glasses, and **neither the
+bootloader nor the USB-debugging prompt appears on it**.
+
+So when you plug the neckband into a new PC and Android asks **"Allow USB debugging?"**,
+you cannot tap Allow. You can't see the dialog. Without that, adb never authorizes and you
+can't do anything.
+
+**`viture_unlock.py` solves that**, and it's the main reason to use it.
 
 ---
 
 ## What you need
 
 **A USB-C cable to your PC.** The neckband's data port is the one the glasses plug into.
-You'll unplug the glasses and connect that port to your computer — so you need a USB-C
-cable, or an adapter if your glasses cable isn't detachable. You won't be able to see
-anything on the glasses during this anyway.
+Unplug the glasses and connect that port to your computer — so you need a USB-C cable, or
+an adapter if your glasses cable isn't detachable. You can't see anything during this
+anyway.
 
-**adb and fastboot** on your PC (Android platform-tools). On Windows the script finds them
-if they're on `PATH` or sitting in the same folder.
+**adb and fastboot** (Android platform-tools). On Windows the script finds them on `PATH`
+or in the same folder.
 
 **Python 3.**
 
-**Wireless debugging.** Not optional — see below.
-
 ---
 
-## Why wireless debugging is required
+## Part 1 — Getting adb authorized
 
-When you plug the neckband into a new computer, Android shows an **"Allow USB debugging?"**
-dialog. You have to tap Allow. On a normal phone you just do it.
-
-Here, that dialog renders on a screen you cannot see.
-
-The way around it: connect over **wireless** adb first. The script then uses the wireless
-connection to read the dialog's layout, find the Allow button, and tap it for you. Once
-that's done USB adb is authorized and everything else works.
-
-So the order matters: **wireless first, then plug in USB.**
-
----
-
-## Step by step
-
-### 1. Turn on Developer options
+### 1. Developer options
 
 Settings → About → tap **Build number** seven times.
 
-### 2. Turn on the three toggles
-
-In Settings → System → Developer options, enable:
+Then in Settings → System → Developer options turn on:
 
 - **USB debugging**
 - **Wireless debugging**
-- **OEM unlocking** ← easy to miss, and unlocking fails without it
+- **OEM unlocking** ← unlocking fails without it
 
-If **OEM unlocking** is greyed out, connect the device to the internet, wait a few minutes,
-and check again.
+### 2. Connect over wireless first
 
-### 3. Pair wireless debugging
+This is the trick. You can't tap the USB prompt, but you *can* reach the device over
+wireless adb — and the script uses that connection to press the button for you.
 
-In Developer options → **Wireless debugging** → *Pair device with pairing code*. You'll get
-an IP, a port and a 6-digit code. On your PC:
+Developer options → **Wireless debugging** → *Pair device with pairing code*:
 
 ```bash
-adb pair 192.168.1.50:41234        # the pairing IP:PORT shown on screen
-# enter the 6-digit code
-
+adb pair 192.168.1.50:41234        # pairing IP:PORT + 6-digit code from the screen
 adb connect 192.168.1.50:35791     # the OTHER IP:PORT, from the main Wireless debugging page
+adb devices                        # should show    192.168.1.50:35791   device
 ```
 
-Confirm it worked:
+> The wireless port **changes on every reboot**. Reconnect after any reboot.
+
+### 3. Run the script
 
 ```bash
-adb devices
-# 192.168.1.50:35791    device
+python3 tools/viture_unlock.py          # Linux / macOS
+python  tools\viture_unlock_win.py      # Windows
 ```
 
-> The wireless port **changes every reboot**. If you reboot, reconnect.
+### 4. Plug in USB when it asks
 
-### 4. Run the script
+The script waits for the wireless device, then tells you to connect USB.
 
-**Linux / macOS**
+As soon as you do, Android pops the invisible **"Allow USB debugging?"** dialog. The script
+then, over the wireless link:
+
+- dumps the dialog's layout with `uiautomator`
+- prints the **RSA fingerprint** so you can confirm it's your PC
+- ticks **Always allow from this computer**
+- taps **Allow**
+- waits for the USB device to flip from `unauthorized` to `device`
+
+That's the authorization done, permanently, without ever seeing the screen.
+
+**Doing it by hand instead**, if you'd rather:
 
 ```bash
-python3 tools/viture_unlock.py
+adb -s <wireless-ip:port> shell uiautomator dump /sdcard/ui.xml
+adb -s <wireless-ip:port> shell cat /sdcard/ui.xml     # find the bounds of android:id/button1
+adb -s <wireless-ip:port> shell input tap 959 526      # "Always allow" checkbox
+adb -s <wireless-ip:port> shell input tap 1398 616     # "Allow"
 ```
 
-**Windows**
+Those coordinates are from a 1920×1080 panel and are what the script computes — but read
+your own dump rather than trusting them.
 
-```
-python tools\viture_unlock_win.py
-```
+### 5. Confirm the unlock
 
-or drop it next to `adb.exe` and double-click it.
+The script prints the wipe warning and waits for `Y`. This is the point of no return.
 
-### 5. Follow it
-
-The script walks the whole thing and prints every command it runs, so you can see what's
-happening:
-
-1. **Waits for your wireless connection.**
-2. **Tells you to plug in USB.** Do it now.
-3. **Handles the "Allow USB debugging?" dialog for you** — ticks *Always allow from this
-   computer*, presses Allow, and prints the RSA fingerprint so you can check it's your PC.
-4. **Asks you to confirm the unlock.** Press `Y`. This is the point of no return — it wipes
-   the device.
-5. **Reboots to the bootloader** and runs `fastboot flashing unlock`.
-6. **Tells you to press the buttons.**
+It then reboots to the bootloader and runs `fastboot flashing unlock`.
 
 ### 6. The blind button press
 
-This is the only part nobody can automate.
-
-When the script says so:
+The only part nobody can automate:
 
 > **Press VOLUME UP once, then press POWER.**
 
-Nothing is highlighted when the menu opens, so **pressing Power on its own does nothing**.
-Volume Up moves the selection onto *UNLOCK THE BOOTLOADER*, and Power confirms it.
+Nothing is selected when the menu opens, so **Power on its own does nothing**. Volume Up
+moves onto *UNLOCK THE BOOTLOADER*; Power confirms.
 
-Pressed the wrong key? No harm — Volume Down selects *DO NOT UNLOCK*, which just reboots.
-Try again.
+Wrong key is harmless — Volume Down picks *DO NOT UNLOCK*, which just reboots. Try again.
 
-The device then wipes itself and reboots. First boot after a wipe takes a while.
-
-### 7. Check it worked
+The device wipes and reboots. First boot after a wipe is slow.
 
 ```bash
 fastboot getvar unlocked
@@ -135,13 +123,32 @@ fastboot getvar unlocked
 
 ---
 
-## Rooting with Magisk
+## Part 2 — Flashing Magisk
 
-After unlocking, set the device up again and re-enable USB debugging (the wipe cleared it).
+After the wipe, set the device up again and re-enable **USB debugging** (and wireless, if
+you need the script again).
 
-Grab a patched boot image from
-[Releases](https://github.com/DigijEth/Virtue-NeckbandPro-Root/releases), or patch the
-stock one yourself with the Magisk app.
+The patched image is in this repo:
+
+| File | What it is |
+|---|---|
+| **`magisk_patched_boot.img`** | Magisk v30.7 patched boot — flash this to root |
+| **`stock_boot_2.1.3.30702.img`** | Untouched stock boot — flash this to undo root |
+
+Both are built from firmware **`2.1.3.30702`**. **Check your version matches** —
+Settings → About. Flashing a boot image from a different build may not boot.
+
+### Test it first, without flashing
+
+```bash
+adb reboot bootloader
+fastboot boot magisk_patched_boot.img
+```
+
+`fastboot boot` loads it into RAM and **does not write the partition**. If something's
+wrong, power cycle and you're exactly where you started. Do this before flashing.
+
+### Flash it
 
 ```bash
 adb reboot bootloader
@@ -149,63 +156,65 @@ fastboot flash boot magisk_patched_boot.img
 fastboot reboot
 ```
 
-**Match your firmware version.** The release image is built from `2.1.3.30702`. Flashing it
-over a different build may not boot.
+You do **not** need to touch `vbmeta` — no `--disable-verity`, no `--disable-verification`.
+With the bootloader unlocked the device boots a modified image as-is.
 
 ### Magisk needs two passes — don't panic in the middle
 
 Install the Magisk APK and open it.
 
-1. It says **additional setup is required** and asks you to reboot. Do it.
-2. After that reboot it asks you to flash **again**, this time from inside the app:
+1. It reports **additional setup is required** and asks you to reboot. Do it.
+2. After that reboot it asks you to flash **again**, from inside the app:
    **Install → Direct Install**. Do it.
-3. Reboot once more. Root now works.
+3. Reboot once more. Root works.
 
-The first fastboot flash only bootstraps Magisk. The middle state looks like it failed —
-it hasn't. Just follow what the app tells you.
+The fastboot flash only bootstraps Magisk. The middle state looks like a failure. It isn't.
+
+### Removing root
+
+```bash
+fastboot flash boot stock_boot_2.1.3.30702.img
+fastboot reboot
+```
 
 ---
 
 ## If something goes wrong
 
-**`fastboot devices` shows nothing.** On Linux it's usually udev permissions — try
-`sudo fastboot devices`. If that works, add a rule:
+**`fastboot devices` shows nothing.** Linux: udev permissions — try `sudo fastboot devices`.
+If that works, add to `/etc/udev/rules.d/51-android.rules`:
 
 ```
 SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666", GROUP="plugdev"
 ```
 
-to `/etc/udev/rules.d/51-android.rules`, then `sudo udevadm control --reload`.
+then `sudo udevadm control --reload`. Windows: fastboot needs a *different* driver than
+adb — install the Google USB driver, or bind WinUSB with Zadig.
 
-On Windows it's a driver — fastboot mode needs a *different* driver than adb. Check Device
-Manager and install the Google USB driver, or bind WinUSB with Zadig.
-
-**`Flashing Unlock is not allowed`.** OEM unlocking is off. Turn it on in Developer options
+**`Flashing Unlock is not allowed`.** OEM unlocking is off. Enable it in Developer options
 before rebooting to the bootloader.
 
-**Nothing happens after the button press.** You may have pressed Power first. Volume Up
-*then* Power — Power alone is ignored while nothing is selected.
+**USB stays `unauthorized`.** Your wireless connection dropped, so the script had nothing to
+tap with. Reconnect wireless and rerun it.
 
-**Device won't boot after flashing.** It's A/B, so the other slot still has a working
-image:
+**Nothing happens after the buttons.** You probably pressed Power first. Volume Up *then*
+Power — Power alone is ignored while nothing is selected.
+
+**Won't boot after flashing.** It's A/B — the other slot still has a working image:
 
 ```bash
 fastboot getvar current-slot
-fastboot --set-active=a        # or b — whichever you were NOT on
+fastboot --set-active=a        # or b, whichever you were NOT on
 fastboot reboot
 ```
 
-**Testing an image without risk.** `fastboot boot image.img` loads it into RAM without
-writing the partition. If it doesn't work, power cycle and you're back to normal. Use this
-before flashing anything you built yourself.
-
-**The wireless port changed.** It changes on every reboot. Reconnect with the new one.
+**Wireless port changed.** It changes every reboot. Reconnect with the new one.
 
 ---
 
-## Going back to stock
+## Going back to stock completely
 
-Stock firmware package:
+Full stock firmware:
 
 ```
 2.1.3.30702_MC942GMS_EQ000_2774.BC07998.E1FE482.AD716D9B55_260702_100_V01_U33_ota.zip
@@ -218,19 +227,19 @@ Stock firmware package:
 
 **Mirror:** _(AndroidFileHost link — TBD)_
 
-It's a standard A/B OTA zip. Extract the partition images from `payload.bin` with a payload
-dumper and flash with fastboot. To remove root only, flash the stock `boot.img`.
+Standard A/B OTA zip — extract partition images from `payload.bin` with a payload dumper
+and flash with fastboot. For root only, `stock_boot_2.1.3.30702.img` above is enough.
 
 ---
 
 ## Related
 
-- **[viture-pro-kernel](https://github.com/DigijEth/viture-pro-kernel)** — custom kernel
-  with KernelSU-Next
-- **[docs/bootloader.md](docs/bootloader.md)** — how the unlock menu actually works
+- **[viture-pro-kernel](https://github.com/DigijEth/viture-pro-kernel)** — custom kernel with
+  KernelSU-Next
+- **[docs/bootloader.md](docs/bootloader.md)** — how the unlock menu works internally
 - **[docs/recovery.md](docs/recovery.md)** — display and recovery findings
 
 ## No warranty
 
-This wipes your device and can leave it unbootable. The A/B slot layout is your safety net.
-Understand `fastboot --set-active=` before you start.
+This wipes your device and can leave it unbootable. A/B slots are your safety net —
+understand `fastboot --set-active=` before you start.
