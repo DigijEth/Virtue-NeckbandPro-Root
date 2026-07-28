@@ -1,0 +1,15 @@
+# Firmware and vendor binaries - not redistributable, and large
+*.img
+*.apk
+*.zip
+*.bin
+*.elf
+*.ko
+payload.bin
+extracted/
+apks/
+src/
+props/
+*.log
+__pycache__/
+*.pyc
