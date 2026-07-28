@@ -1,9 +1,15 @@
 # Recovery and display output
 
-Everything here is measured on hardware. Where an earlier conclusion was wrong, the
-correction and the evidence that overturned it are both kept.
+Where an earlier conclusion was wrong, the correction and the evidence that overturned it
+are both kept.
 
-## The display is DisplayPort alt mode over USB-C
+**Read the labels.** Every measurement below was taken **in Android**. Nothing has yet
+been measured *inside recovery* — recovery's `adbd` comes up unauthorized and the
+authorization prompt renders on the display we cannot see (see
+[Debugging recovery is itself blocked](#debugging-recovery-is-itself-blocked)). Statements
+about recovery behaviour are marked **INFERRED** and are not yet verified on hardware.
+
+## The display is DisplayPort alt mode over USB-C  — MEASURED (in Android)
 
 Proven by attaching and detaching the glasses and sampling every DRM connector:
 
@@ -25,7 +31,7 @@ Corroborated by the boot log:
 
 That is the DP controller enumerating a real sink — 4 lanes, 24 bpp.
 
-### `DSI-1` is a phantom — do not be fooled by it
+### `DSI-1` is a phantom — do not be fooled by it  — MEASURED (in Android)
 
 `card0-DSI-1` reports `connected` with a plausible-looking `1920x1080@120` mode **whether
 or not anything is plugged in**. Android compounds this by labelling the primary display
@@ -50,14 +56,18 @@ selects a display either, and the vendor_boot cmdline carries
 **Reading connector names alone will lead you to the wrong output.** Only the
 attach/detach test settles it.
 
-## Correction: recovery *does* have the display driver
+## Correction: recovery *should* have the display driver — INFERRED, NOT MEASURED
 
 An earlier version of this document claimed stock recovery has no display driver at all.
-That was wrong.
+That was wrong, but the replacement claim is an inference and has not been confirmed
+inside recovery.
 
-`msm_drm.ko` ships in the **vendor_boot** ramdisk, and it is the sole entry in the
-top-level `lib/modules/modules.load`, so first-stage init loads it — and first-stage init
-runs in recovery too.
+`msm_drm.ko` ships in the **vendor_boot** ramdisk (this part is measured — it was
+extracted from `vendor_boot_a`), and it is the sole entry in the top-level
+`lib/modules/modules.load`. The *inference* is that first-stage init therefore loads it in
+recovery as well as in Android, since first-stage init runs in both. **This has not been
+confirmed** — confirming it requires `lsmod` or `/sys/class/drm` from inside recovery,
+which is blocked.
 
 Extracted from `vendor_boot_a` (header v3, vendor_ramdisk 1.7 MiB, dtb 9.4 MiB):
 
@@ -74,9 +84,10 @@ being a recovery-as-boot device) contains zero `.ko` files, and `CONFIG_DRM_MSM`
 from the kernel config. Both true, and both irrelevant — the modules come from vendor_boot,
 not from the recovery ramdisk.
 
-## So why is recovery blind?
+## So why is recovery blind? — HYPOTHESIS, NOT MEASURED
 
-Not a missing driver. The DP alt-mode chain is never brought up.
+Best current hypothesis: not a missing driver, but the DP alt-mode chain never being
+brought up. This has **not** been verified inside recovery.
 
 Lighting a DP alt-mode display is not just a display driver. In order:
 
@@ -96,9 +107,13 @@ CONFIG_QTI_PMIC_GLINK=y
 Device tree has the matching pieces: `qcom,usb-ssphy-qmp-dp-combo`, `qcom,qpnp-pdphy`,
 `qcom,dp-display`, `qcom,edp-display`.
 
-But on Qualcomm platforms the negotiation is *driven from userspace* through the
-PMIC-glink / UCSI path. Recovery's minimal init does not run that, so steps 1–3 never
-complete, `DP-1` stays `disconnected`, and `minui` has nothing to draw on.
+On Qualcomm platforms the negotiation is *driven from userspace* through the PMIC-glink /
+UCSI path. The hypothesis is that recovery's minimal init does not run that, so steps 1–3
+never complete, `DP-1` stays `disconnected`, and `minui` has nothing to draw on.
+
+To confirm or kill this hypothesis, read `/sys/class/drm/card0-DP-1/status` **from inside
+recovery** with the glasses attached. `disconnected` there while Android shows `connected`
+would confirm it. That measurement is the next thing to get.
 
 **This is the actual problem a custom recovery has to solve on this device.** It is harder
 than a DSI panel would have been — a DSI panel is described in the DTB and comes up with no
@@ -130,7 +145,16 @@ Without one of these there is no way to inspect DRM state inside recovery.
 
 ## Status
 
-Unfinished. Established: the output is DP alt mode, the driver is present in recovery, and
-the missing piece is USB-C alt-mode negotiation in a recovery environment. Not yet done:
-getting adb authorized in recovery, confirming `DP-1` state from inside recovery, and
-building a recovery that triggers the negotiation.
+Unfinished.
+
+**Measured (in Android):** the glasses are on DP alt mode; `DSI-1` is a phantom;
+`msm_drm.ko` is in the vendor_boot ramdisk and is the only entry in `modules.load`.
+
+**Inferred, not measured:** that `msm_drm` loads in recovery; that DP alt-mode negotiation
+is what fails there.
+
+**Blocked:** every recovery-side measurement, because recovery's `adbd` is unauthorized and
+the prompt is on the invisible display.
+
+**Next:** authorize adb in recovery (pre-seeded key or a ramdisk `/adb_keys`), then read
+`DP-1` status and `lsmod` from inside recovery. Only then is it worth designing the fix.
